@@ -1,5 +1,7 @@
 # Blink Goals 🎯
 
+URL: https://blink-goals--u6veg9anvj.expo.app/
+
 A goal-based savings planner built with **React Native, Expo, and TypeScript** that helps users turn financial targets into simple, actionable contribution plans.
 
 Users can create a savings goal, choose a contribution pace, track their progress, and add contributions as they work toward completing their target.
