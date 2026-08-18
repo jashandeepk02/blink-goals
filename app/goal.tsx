@@ -1,7 +1,7 @@
 // app/goal.tsx
 
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -13,14 +13,19 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import ContributionForm from "@/components/ContributionForm";
+import GoalCompletionCard from "@/components/GoalCompletionCard";
+import MilestoneCelebration from "@/components/MilestoneCelebration";
+import MilestoneList from "@/components/MilestoneList";
+import MilestoneTrack from "@/components/MilestoneTrack";
 import InfoCard from "@/components/ui/InfoCard";
 import PrimaryButton from "@/components/ui/PrimaryButton";
-import ProgressBar from "@/components/ui/ProgressBar";
 import { COLORS } from "@/constants/theme";
 import { useGoalStore } from "@/store/useGoalStore";
 import type { ContributionPace } from "@/types/goal";
 import { formatCurrency, formatDate } from "@/utils/format";
 import { calculateProgress } from "@/utils/goal-calculations";
+import { getMilestoneStates } from "@/utils/milestones";
+import { getMotivationalMessage } from "@/utils/motivation";
 
 const PACE_LABELS: Record<ContributionPace, string> = {
   daily: "Daily",
@@ -37,7 +42,9 @@ export default function Goal() {
   const targetDate = useGoalStore((state) => state.targetDate);
   const pace = useGoalStore((state) => state.pace);
   const hasStarted = useGoalStore((state) => state.hasStarted);
+  const pendingCelebration = useGoalStore((state) => state.pendingCelebration);
   const addContribution = useGoalStore((state) => state.addContribution);
+  const acknowledgeCelebration = useGoalStore((state) => state.acknowledgeCelebration);
 
   const [showContributionForm, setShowContributionForm] = useState(false);
 
@@ -47,13 +54,25 @@ export default function Goal() {
     }
   }, [hasStarted, router]);
 
-  if (!hasStarted) {
-    return null;
-  }
-
   const progress = calculateProgress(savedAmount, targetAmount);
   const remaining = Math.max(targetAmount - savedAmount, 0);
   const isComplete = progress >= 1;
+
+  // Both derived purely from the same clamped `progress` the ProgressBar
+  // already used — never from raw savedAmount, which can overshoot past
+  // the target (see utils/milestones.ts).
+  const milestones = useMemo(
+    () => getMilestoneStates(progress, targetAmount),
+    [progress, targetAmount]
+  );
+  const message = useMemo(
+    () => getMotivationalMessage(progress, milestones),
+    [progress, milestones]
+  );
+
+  if (!hasStarted) {
+    return null;
+  }
 
   const handleConfirmContribution = (amount: number) => {
     addContribution(amount);
@@ -73,18 +92,22 @@ export default function Goal() {
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
         >
-          <Text style={styles.name}>{name}</Text>
+          {isComplete ? (
+            <GoalCompletionCard name={name} targetAmount={targetAmount} />
+          ) : (
+            <>
+              <Text style={styles.name}>{name}</Text>
+              <Text style={styles.savedLine}>
+                {formatCurrency(savedAmount)} of {formatCurrency(targetAmount)} saved
+              </Text>
+            </>
+          )}
 
-          <Text style={styles.savedLine}>
-            {formatCurrency(savedAmount)} of {formatCurrency(targetAmount)} saved
-          </Text>
+          <MilestoneTrack progress={progress} milestones={milestones} />
 
-          <ProgressBar progress={progress} />
-          <Text style={styles.progressText}>
-            {isComplete
-              ? "🎉 Goal complete!"
-              : `${Math.round(progress * 100)}% complete`}
-          </Text>
+          {!isComplete && <Text style={styles.message}>{message}</Text>}
+
+          <MilestoneList milestones={milestones} />
 
           <View style={styles.card}>
             <InfoCard label="Goal amount" value={formatCurrency(targetAmount)} />
@@ -109,6 +132,8 @@ export default function Goal() {
           )}
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <MilestoneCelebration milestone={pendingCelebration} onDismiss={acknowledgeCelebration} />
     </SafeAreaView>
   );
 }
@@ -129,18 +154,19 @@ const styles = StyleSheet.create({
     fontSize: 26,
     fontWeight: "700",
     color: COLORS.text,
-    marginBottom: 20,
+    marginBottom: 8,
   },
   savedLine: {
     fontSize: 16,
     color: COLORS.muted,
-    marginBottom: 10,
+    marginBottom: 20,
   },
-  progressText: {
+  message: {
     fontSize: 14,
-    color: COLORS.muted,
-    marginTop: 8,
-    marginBottom: 24,
+    color: COLORS.text,
+    lineHeight: 20,
+    marginTop: 12,
+    marginBottom: 20,
   },
   card: {
     backgroundColor: "#FFFFFF",

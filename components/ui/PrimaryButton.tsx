@@ -4,16 +4,25 @@
 // tappable element — it gives native touch handling and, via the
 // function-style `style` prop below, a `pressed` boolean for visual
 // feedback (there's no CSS `:active` pseudo-class to reach for here).
+//
+// `variant="success"` and the optional `icon` prop exist for the
+// gamification CTAs (e.g. "Share Your Win") — both are opt-in, so every
+// existing call site renders exactly as before.
 
-import { Pressable, StyleSheet, Text } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import type { ComponentProps } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { COLORS } from "@/constants/theme";
+
+type IconName = ComponentProps<typeof Ionicons>["name"];
 
 interface PrimaryButtonProps {
   title: string;
   onPress: () => void;
   disabled?: boolean;
-  variant?: "primary" | "secondary";
+  variant?: "primary" | "secondary" | "success";
+  icon?: IconName;
 }
 
 export default function PrimaryButton({
@@ -21,8 +30,10 @@ export default function PrimaryButton({
   onPress,
   disabled,
   variant = "primary",
+  icon,
 }: PrimaryButtonProps) {
   const isSecondary = variant === "secondary";
+  const isSuccess = variant === "success";
 
   return (
     <Pressable
@@ -31,13 +42,22 @@ export default function PrimaryButton({
       style={({ pressed }) => [
         styles.button,
         isSecondary && styles.secondaryButton,
+        isSuccess && styles.successButton,
         disabled && styles.disabledButton,
         pressed && !disabled && styles.pressedButton,
       ]}
     >
-      <Text style={[styles.text, isSecondary && styles.secondaryText]}>
-        {title}
-      </Text>
+      <View style={styles.content}>
+        {icon && (
+          <Ionicons
+            name={icon}
+            size={18}
+            color={isSecondary ? COLORS.text : "#FFFFFF"}
+            style={styles.icon}
+          />
+        )}
+        <Text style={[styles.text, isSecondary && styles.secondaryText]}>{title}</Text>
+      </View>
     </Pressable>
   );
 }
@@ -55,11 +75,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E2E8F0",
   },
+  successButton: {
+    backgroundColor: COLORS.success,
+  },
   disabledButton: {
     opacity: 0.4,
   },
   pressedButton: {
     opacity: 0.85,
+  },
+  content: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  icon: {
+    marginRight: 8,
   },
   text: {
     color: "#FFFFFF",

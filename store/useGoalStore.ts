@@ -10,10 +10,19 @@
 // targetDate via calculateGoalPlan() wherever it's needed. Storing it
 // alongside the inputs would risk it going stale, the same reason you'd
 // avoid storing a derived value in React state on web.
+//
+// Gamification state below follows the same principle: milestone
+// *status* (locked/current/completed) is derived from progress wherever
+// it's displayed (see utils/milestones.ts) and never stored. The only
+// thing that genuinely needs to live in the store is `highestMilestoneSeen`
+// — which milestone has already had its celebration shown — because
+// that's the one fact that can't be recomputed from savedAmount alone.
 
 import { create } from "zustand";
 
-import type { ContributionPace } from "@/types/goal";
+import type { ContributionPace, MilestoneThreshold } from "@/types/goal";
+import { calculateProgress } from "@/utils/goal-calculations";
+import { getNewlyCrossedMilestones } from "@/utils/milestones";
 
 interface GoalDetails {
   name: string;
@@ -28,10 +37,22 @@ interface GoalState extends GoalDetails {
   savedAmount: number;
   hasStarted: boolean;
 
+  // The highest milestone threshold whose celebration has already been
+  // shown for this goal. Monotonically increasing, reset by createGoal.
+  // This — not a UI flag — is what stops a milestone celebration from
+  // firing again on re-render or after the banner is dismissed.
+  highestMilestoneSeen: number;
+  // The milestone threshold whose celebration is currently queued for
+  // display (null when there's nothing to show). Set by addContribution
+  // the instant a contribution crosses a threshold for the first time;
+  // cleared by the UI via acknowledgeCelebration() once it's been shown.
+  pendingCelebration: MilestoneThreshold | null;
+
   createGoal: (details: GoalDetails) => void;
   selectPace: (pace: ContributionPace, amount: number) => void;
   startGoal: () => void;
   addContribution: (amount: number) => void;
+  acknowledgeCelebration: () => void;
   resetGoal: () => void;
 }
 
@@ -44,6 +65,8 @@ const initialState = {
   contributionAmount: 0,
   savedAmount: 0,
   hasStarted: false,
+  highestMilestoneSeen: 0,
+  pendingCelebration: null as MilestoneThreshold | null,
 };
 
 export const useGoalStore = create<GoalState>((set) => ({
@@ -56,6 +79,8 @@ export const useGoalStore = create<GoalState>((set) => ({
       contributionAmount: 0,
       savedAmount: 0,
       hasStarted: false,
+      highestMilestoneSeen: 0,
+      pendingCelebration: null,
     }),
 
   selectPace: (pace, amount) => set({ pace, contributionAmount: amount }),
@@ -63,7 +88,27 @@ export const useGoalStore = create<GoalState>((set) => ({
   startGoal: () => set({ hasStarted: true }),
 
   addContribution: (amount) =>
-    set((state) => ({ savedAmount: state.savedAmount + amount })),
+    set((state) => {
+      const savedAmount = state.savedAmount + amount;
+      const progress = calculateProgress(savedAmount, state.targetAmount);
+      const newlyCrossed = getNewlyCrossedMilestones(progress, state.highestMilestoneSeen);
+
+      if (newlyCrossed.length === 0) {
+        return { savedAmount };
+      }
+
+      const highest = newlyCrossed[newlyCrossed.length - 1];
+      return {
+        savedAmount,
+        highestMilestoneSeen: highest,
+        // 100% ("Goal Crushed") is carried by the completion card, not a
+        // milestone toast — celebrating it twice would just duplicate
+        // that bigger moment, so only sub-100 thresholds queue a banner.
+        pendingCelebration: highest < 100 ? highest : null,
+      };
+    }),
+
+  acknowledgeCelebration: () => set({ pendingCelebration: null }),
 
   resetGoal: () => set(initialState),
 }));
